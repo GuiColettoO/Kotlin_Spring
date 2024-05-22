@@ -1,44 +1,60 @@
 package br.com.coletto.forum.service
 
-import br.com.coletto.forum.dto.InputTopicoDTO
-import br.com.coletto.forum.dto.OutputTopicoDTO
-import br.com.coletto.forum.model.Topico
+import br.com.coletto.forum.dto.*
+import br.com.coletto.forum.exception.NotFoundException
+import br.com.coletto.forum.mapper.TopicoInputMapper
+import br.com.coletto.forum.mapper.TopicoOutputMapper
+import br.com.coletto.forum.repository.TopicoRepository
+import org.springframework.data.domain.Page
+import org.springframework.data.domain.Pageable
 import org.springframework.stereotype.Service
 import java.util.stream.Collectors
 
 @Service
 class TopicoService(
-    private var topicos: List<Topico> = ArrayList(),
-    private val cursoService: CursoService,
-    private val usuarioService: UsuarioService) {
+  private val repository: TopicoRepository,
+  private val topicoOutputMapper: TopicoOutputMapper,
+  private val topicoInputMapper: TopicoInputMapper,
+  private val notFoundMessage: String = "Topico não encontrado!")
+{
 
-    fun listar(): List<OutputTopicoDTO> {
-        return topicos.stream().map { t -> }.collect(Collectors.toList())
+  fun listar(
+    nomeCurso: String?,
+    paginacao: Pageable
+  ): Page<OutputTopicoDTO> {
+    val topicos = if (nomeCurso == null) {
+      repository.findAll(paginacao)
+    }else {
+      repository.findByCursoNome(nomeCurso, paginacao)
     }
+    return topicos.map {t -> topicoOutputMapper.map(t)}
+  }
 
-    fun buscarPorId(id: Long): OutputTopicoDTO {
-        val topico = topicos.stream().filter { t ->
-            t.id == id
-        }.findFirst().get()
+  fun buscarPorId(id: Long): OutputTopicoDTO {
+    val topico = repository.findById(id)
+      .orElseThrow{NotFoundException(notFoundMessage)}
+    return topicoOutputMapper.map(topico)
+  }
 
-        return OutputTopicoDTO(
-            id = topico.id,
-            titulo = topico.titulo,
-            mensagem = topico.mensagem,
-            dataCriacao = topico.dataCriacao,
-            status = topico.status,
-        )
-    }
+  fun cadastrar(form: InputTopicoDTO): OutputTopicoDTO {
+    val topico = topicoInputMapper.map(form)
+    repository.save(topico)
+    return topicoOutputMapper.map(topico)
+  }
 
-    fun cadastrar(topicoDTO: InputTopicoDTO) {
+  fun atualizar(form: UpdateTopicoDTO): OutputTopicoDTO {
+    val topico = repository.findById(form.id)
+      .orElseThrow{NotFoundException(notFoundMessage)}
+    topico.titulo = form.titulo
+    topico.mensagem = form.mensagem
+    return topicoOutputMapper.map(topico)
+  }
 
-        topicos.plus(Topico(
-            id = topicos.size.toLong() + 1,
-            titulo = topicoDTO.titulo,
-            mensagem = topicoDTO.mensagem,
-            curso = cursoService.buscarPorId(topicoDTO.idCurso),
-            autor = usuarioService.buscarPorId(topicoDTO.idAutor),
-            )
-        )
-    }
+  fun deletar(id: Long) {
+    repository.deleteById(id)
+  }
+
+  fun relatorio(): List<TopicoPorCategoriaDTO> {
+    return repository.relatorio()
+  }
 }
